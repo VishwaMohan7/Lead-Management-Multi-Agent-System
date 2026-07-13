@@ -6,8 +6,11 @@ from mcp_clients.firestore_client import FirestoreMCPClient
 from mcp_clients.gmail_client import GmailMCPClient
 from mcp_clients.whatsapp_client import WhatsAppMCPClient
 from mcp_clients.calendar_client import CalendarMCPClient
-from utils.llm_provider import get_llm
-from orchestrator.pipeline import LeadManagementOrchestrator
+from google.adk.runners import InMemoryRunner
+from google.genai import types
+from agents.adk_pipeline import MODEL_NAME, adk_pipeline
+import logging
+import traceback
 
 app = FastAPI(title="Lead Management Multi-Agent System API")
 
@@ -20,23 +23,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize MCP clients and Orchestrator
-# Shared Firestore MCP client is used throughout
-firestore_client = FirestoreMCPClient(mock_mode=True)
+# Initialize MCP clients
+firestore_client = FirestoreMCPClient()
 gmail_client = GmailMCPClient(mock_mode=True)
 whatsapp_client = WhatsAppMCPClient(mock_mode=True)
 calendar_client = CalendarMCPClient(mock_mode=True)
-
-# LLM provider
-llm = get_llm()
-
-# Orchestrator
-orchestrator = LeadManagementOrchestrator(
-    llm=llm,
-    firestore_client=firestore_client,
-    gmail_client=gmail_client,
-    calendar_client=calendar_client
-)
 
 # Input Request Models
 class CreateLeadRequest(BaseModel):
@@ -49,13 +40,67 @@ class UpdateLeadRequest(BaseModel):
     recommendation: Optional[Dict[str, Any]] = None
     draft: Optional[Dict[str, str]] = None
 
-# Background pipeline task runner
-def run_orchestrator_task(raw_text: str, source: str):
+# Background ADK pipeline task runner
+def run_adk_pipeline_task(lead_id: str):
     try:
-        orchestrator.run_pipeline(raw_text, source)
+        firestore_client.update_lead(
+            lead_id,
+            {"pipeline_status": "running"},
+            "pipeline_started",
+        )
+        runner = InMemoryRunner(agent=adk_pipeline)
+        runner.auto_create_session = True
+        
+        # Construct message content
+        p = types.Part(text=f"Process lead {lead_id}")
+        new_message = types.Content(role="user", parts=[p])
+        
+        # Execute the ADK SequentialAgent pipeline synchronously in this background worker
+        list(runner.run(
+            user_id="api_service",
+            session_id=lead_id,
+            new_message=new_message,
+            state_delta={"lead_id": lead_id}
+        ))
+
+        lead = firestore_client.get_lead(lead_id)
+        missing = []
+        if not lead:
+            missing.append("lead")
+        else:
+            if not lead.get("analysis", {}).get("source_text"):
+                missing.append("analysis.source_text")
+            if not lead.get("extracted_data"):
+                missing.append("extracted_data")
+            if not lead.get("intent"):
+                missing.append("intent")
+            if not lead.get("score"):
+                missing.append("score")
+            if not lead.get("recommendation"):
+                missing.append("recommendation")
+            if not lead.get("draft"):
+                missing.append("draft")
+        if missing:
+            raise RuntimeError(f"ADK pipeline finished without required fields: {', '.join(missing)}")
+
+        firestore_client.update_lead(
+            lead_id,
+            {"pipeline_status": "completed"},
+            "pipeline_completed",
+        )
     except Exception as e:
-        # Errors are caught and logged inside the orchestrator history
-        pass
+        logging.getLogger("api").error("Error executing ADK pipeline for %s: %s", lead_id, traceback.format_exc())
+        try:
+            firestore_client.update_lead(
+                lead_id,
+                {
+                    "pipeline_status": "failed",
+                    "pipeline_error": str(e),
+                },
+                "pipeline_failed",
+            )
+        except Exception:
+            logging.getLogger("api").error("Failed to persist pipeline failure for %s", lead_id, exc_info=True)
 
 @app.post("/api/leads", status_code=201)
 def create_lead(request: CreateLeadRequest, background_tasks: BackgroundTasks):
@@ -66,7 +111,7 @@ def create_lead(request: CreateLeadRequest, background_tasks: BackgroundTasks):
     # Create the initial lead record first to return immediately to the client
     lead = firestore_client.create_lead(request.raw_text, request.source)
     # Start the agent pipeline in the background
-    background_tasks.add_task(run_orchestrator_task, request.raw_text, request.source)
+    background_tasks.add_task(run_adk_pipeline_task, lead["id"])
     return {
         "message": "Lead ingested. Agent pipeline started in background.",
         "lead_id": lead["id"]
@@ -183,3 +228,20 @@ def reject_lead_draft(lead_id: str):
     )
 
     return {"message": "Draft rejected."}
+
+@app.get("/api/config")
+def get_config():
+    """
+    Returns the current execution configuration mode of the ADK pipeline.
+    """
+    if MODEL_NAME != "mock-adk-model":
+        return {
+            "mode": "Live NVIDIA API ADK Mode",
+            "model": MODEL_NAME,
+            "is_mock": False
+        }
+    return {
+        "mode": "Local Mock ADK Mode",
+        "model": "mock-adk-model",
+        "is_mock": True
+    }

@@ -1,7 +1,7 @@
 from typing import Any
 from mcp_clients.firestore_client import FirestoreMCPClient
 from skills.scoring_rules import ScoringRulesSkill
-from mcp_clients.base_client import logger
+from mcp_clients.base_client import log_step
 
 class LeadScoringAgent:
     """
@@ -16,9 +16,10 @@ class LeadScoringAgent:
         self.scoring_skill = ScoringRulesSkill(llm)
 
     def execute(self, lead_id: str) -> dict:
-        logger.info(f"[ScoringAgent] Executing for lead: {lead_id}")
+        log_step("ScoringAgent", f"ENTER execute for lead {lead_id}")
 
         # 1. Fetch current lead state
+        log_step("ScoringAgent", "Retrieving lead state from Firestore...")
         lead = self.firestore_client.get_lead(lead_id)
         if not lead:
             raise ValueError(f"Lead with id {lead_id} not found.")
@@ -27,9 +28,12 @@ class LeadScoringAgent:
         extracted_data = lead.get("extracted_data", {})
         intent = lead.get("intent", "other")
         
+        log_step("ScoringAgent", "Executing Scoring Rules Skill...")
         scoring_res = self.scoring_skill.execute(extracted_data, intent)
+        log_step("ScoringAgent", f"Scoring Rules Skill finished. Category={scoring_res.category}, Points={scoring_res.score}")
 
         # 3. Update Firestore MCP
+        log_step("ScoringAgent", "Saving lead score results back to Firestore...")
         updates = {
             "score": {
                 "category": scoring_res.category,
@@ -43,5 +47,5 @@ class LeadScoringAgent:
             updates, 
             "scoring_agent_completed"
         )
-        logger.info(f"[ScoringAgent] Completed scoring for lead {lead_id}: {scoring_res.category} ({scoring_res.score} pts)")
+        log_step("ScoringAgent", f"EXIT execute successfully for lead {lead_id}")
         return updated_lead

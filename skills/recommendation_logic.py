@@ -90,6 +90,9 @@ class RecommendationSkill:
                 calendar_event=calendar_event
             )
         except Exception as e:
+            import openai
+            if isinstance(e, (openai.APIError, openai.APITimeoutError, openai.RateLimitError, openai.APIConnectionError)):
+                raise e
             details = f"Follow up on course {course}. Lead is {score_category}."
             if calendar_event:
                 details += f" A Zoom consult has been pre-scheduled for {calendar_event.get('start_time')}."

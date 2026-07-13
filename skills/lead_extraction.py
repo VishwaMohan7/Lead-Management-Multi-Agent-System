@@ -48,6 +48,9 @@ class LeadExtractionSkill:
             data = json.loads(content)
             return ExtractedLeadFields(**data)
         except Exception as e:
+            import openai
+            if isinstance(e, (openai.APIError, openai.APITimeoutError, openai.RateLimitError, openai.APIConnectionError)):
+                raise e
             # Safe parsing fallback using regex/defaults
             return ExtractedLeadFields(
                 course="AI" if "ai" in raw_text.lower() else "Unknown",

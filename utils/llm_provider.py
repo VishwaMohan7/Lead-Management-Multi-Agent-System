@@ -21,6 +21,8 @@ except ImportError:
 from dotenv import load_dotenv
 load_dotenv()
 
+_LLM_CACHE: dict[tuple[Optional[str], Optional[str], Optional[str], float], Any] = {}
+
 class MockAIMessage:
     def __init__(self, content: str):
         self.content = content
@@ -139,20 +141,20 @@ class MockLLM:
         # Check if the prompt is for Outbound Communication drafting
         elif "draft" in prompt_text_lower or "email" in prompt_text_lower or "whatsapp" in prompt_text_lower:
             # Detect what details we have
-            course = "our courses"
+            course = "our program"
             if "ai" in prompt_text_lower:
-                course = "Advanced AI Course"
+                course = "AI"
             elif "data science" in prompt_text_lower:
-                course = "Data Science Boot Camp"
+                course = "Data Science"
 
-            email_subject = f"Response to your inquiry on {course}"
+            email_subject = f"Welcome to our {course} program!" if course != "our program" else "Welcome to our program"
             email_body = (
                 f"Hi,\n\n"
-                f"Thanks for reaching out! We are thrilled to hear about your interest in our {course}.\n"
+                f"Thanks for reaching out! We are thrilled to hear about your interest in our {course} program.\n"
                 f"A course counselor will review your request and contact you soon regarding scheduling and enrollment.\n\n"
                 f"Best regards,\nAdmissions Team"
             )
-            whatsapp_body = f"Hi! Thanks for inquiring about the {course}. A counselor will get in touch with you shortly on WhatsApp to answer your questions. Let us know if you have a preferred time to connect!"
+            whatsapp_body = f"Hi! Thanks for inquiring about the {course} program. A counselor will get in touch with you shortly on WhatsApp to answer your questions. Let us know if you have a preferred time to connect!"
 
             comm_output = {
                 "email_subject": email_subject,
@@ -170,18 +172,32 @@ class MockLLM:
 def get_llm(temperature: float = 0.0) -> Any:
     """
     Returns the Nvidia Nemotron LLM client using OpenAI compatibility interface.
-    Falls back to MockLLM if NVIDIA_API_KEY is not configured.
+    Falls back to MockLLM if NVIDIA_API_KEY is not configured or in tests.
     """
+    import sys
+    if "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ:
+        if os.getenv("NVIDIA_API_KEY") != "fake_test_key_12345":
+            return MockLLM()
+
     api_key = os.getenv("NVIDIA_API_KEY")
+    model_name = os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
+    base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    cache_key = (api_key, model_name if api_key else None, base_url if api_key else None, temperature)
+
+    if cache_key in _LLM_CACHE:
+        return _LLM_CACHE[cache_key]
+
     if api_key:
-        model_name = os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
-        base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-        return ChatOpenAI(
+        llm = ChatOpenAI(
             model=model_name,
             api_key=api_key,
             base_url=base_url,
-            temperature=temperature
+            temperature=temperature,
+            max_retries=1,
+            timeout=15.0
         )
-    
-    # Mock Fallback
-    return MockLLM()
+    else:
+        llm = MockLLM()
+
+    _LLM_CACHE[cache_key] = llm
+    return llm

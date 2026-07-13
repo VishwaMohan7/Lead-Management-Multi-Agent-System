@@ -46,6 +46,9 @@ class WhatsAppGenerationSkill:
             data = json.loads(content)
             return WhatsAppDraft(**data)
         except Exception as e:
+            import openai
+            if isinstance(e, (openai.APIError, openai.APITimeoutError, openai.RateLimitError, openai.APIConnectionError)):
+                raise e
             # Fallback draft
             body = f"Hi! 👋 Thanks for inquiring about our {course} program. Let's schedule a brief call to talk about starting {timeline}! 🚀"
             return WhatsAppDraft(body=body)

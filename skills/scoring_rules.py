@@ -79,6 +79,9 @@ class ScoringRulesSkill:
             data["score"] = max(0, min(100, int(data["score"])))
             return LeadScoreResult(**data)
         except Exception as e:
+            import openai
+            if isinstance(e, (openai.APIError, openai.APITimeoutError, openai.RateLimitError, openai.APIConnectionError)):
+                raise e
             # Fallback based on deterministic rules
             category = "COLD"
             if base_score >= 80:

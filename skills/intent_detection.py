@@ -43,6 +43,9 @@ class IntentDetectionSkill:
             data = json.loads(content)
             return DetectedIntent(**data)
         except Exception as e:
+            import openai
+            if isinstance(e, (openai.APIError, openai.APITimeoutError, openai.RateLimitError, openai.APIConnectionError)):
+                raise e
             # Simple fallback
             intent = "course_inquiry"
             if "price" in raw_text.lower() or "fee" in raw_text.lower() or "cost" in raw_text.lower():

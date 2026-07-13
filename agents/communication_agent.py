@@ -2,7 +2,7 @@ from typing import Any
 from mcp_clients.firestore_client import FirestoreMCPClient
 from skills.email_generation import EmailGenerationSkill
 from skills.whatsapp_generation import WhatsAppGenerationSkill
-from mcp_clients.base_client import logger
+from mcp_clients.base_client import log_step
 
 class CommunicationAgent:
     """
@@ -18,9 +18,10 @@ class CommunicationAgent:
         self.whatsapp_skill = WhatsAppGenerationSkill(llm)
 
     def execute(self, lead_id: str) -> dict:
-        logger.info(f"[CommunicationAgent] Executing for lead: {lead_id}")
+        log_step("CommunicationAgent", f"ENTER execute for lead {lead_id}")
 
         # 1. Fetch current lead state
+        log_step("CommunicationAgent", "Retrieving lead state from Firestore...")
         lead = self.firestore_client.get_lead(lead_id)
         if not lead:
             raise ValueError(f"Lead with id {lead_id} not found.")
@@ -34,20 +35,25 @@ class CommunicationAgent:
         lead_email = lead.get("lead_email", "learner@example.com")
 
         # 3. Execute drafting skills
+        log_step("CommunicationAgent", "Executing Email Generation Skill...")
         email_draft = self.email_skill.execute(
             lead_email=lead_email,
             score_category=score_category,
             recommendation=recommendation_action,
             extracted_data=extracted_data
         )
+        log_step("CommunicationAgent", f"Email Generation Skill completed. Subject: '{email_draft.subject}'")
 
+        log_step("CommunicationAgent", "Executing WhatsApp Generation Skill...")
         whatsapp_draft = self.whatsapp_skill.execute(
             score_category=score_category,
             recommendation=recommendation_action,
             extracted_data=extracted_data
         )
+        log_step("CommunicationAgent", "WhatsApp Generation Skill completed.")
 
         # 4. Save drafts to Firestore with pending_approval status
+        log_step("CommunicationAgent", "Saving draft messaging to Firestore with status 'pending_approval'...")
         updates = {
             "draft": {
                 "email_subject": email_draft.subject,
@@ -62,5 +68,5 @@ class CommunicationAgent:
             updates, 
             "communication_agent_completed"
         )
-        logger.info(f"[CommunicationAgent] Completed drafting outbound comms for lead {lead_id} (pending_approval)")
+        log_step("CommunicationAgent", f"EXIT execute successfully for lead {lead_id}")
         return updated_lead

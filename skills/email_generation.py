@@ -18,19 +18,21 @@ class EmailGenerationSkill:
         timeline = extracted_data.get("timeline", "flexible timeline")
 
         prompt = (
-            "You are a helpful admissions writer. Draft an outbound email to a prospective learner with the following info:\n"
-            f"Email: {lead_email}\n"
-            f"Course: {course}\n"
-            f"Timeline: {timeline}\n"
-            f"Lead Rating: {score_category}\n"
-            f"Admissions Recommendation: {recommendation}\n\n"
-            "Rules for Draft:\n"
-            "- Friendly, professional tone.\n"
-            "- If Lead Rating is HOT, convey excitement and refer to the specific action (like scheduling a demo or calling).\n"
-            "- Provide a clear next step (e.g. 'A counsellor will call you shortly').\n"
-            "- Sign off as the 'Lead Management Admissions Team'.\n\n"
-            "Format the output strictly as a JSON object with keys: "
-            "\"subject\", \"body\"."
+            "You are a helpful admissions writer. Draft an outbound email from the 'Lead Management Admissions Team' to a prospective learner.\n\n"
+            "Lead Info:\n"
+            f"- Learner Email: {lead_email}\n"
+            f"- Interested Course: {course}\n"
+            f"- Starting Timeline: {timeline}\n"
+            f"- Lead Rating: {score_category}\n"
+            f"- Admissions Recommendation: {recommendation}\n\n"
+            "Instructions:\n"
+            "1. Address the email directly to the prospective learner (do not write it to the admissions team).\n"
+            "2. Write in a friendly, professional tone.\n"
+            "3. If the Lead Rating is HOT, convey excitement and mention the recommendation details.\n"
+            "4. Provide a clear next step for the learner.\n"
+            "5. Do NOT include instructions, rules, or JSON formatting instructions in your output subject or body.\n"
+            "6. Sign off as 'Lead Management Admissions Team'.\n\n"
+            "Format the output strictly as a JSON object with keys: \"subject\" and \"body\"."
         )
 
         try:
@@ -49,6 +51,9 @@ class EmailGenerationSkill:
             data = json.loads(content)
             return EmailDraft(**data)
         except Exception as e:
+            import openai
+            if isinstance(e, (openai.APIError, openai.APITimeoutError, openai.RateLimitError, openai.APIConnectionError)):
+                raise e
             # Fallback draft
             subject = f"Welcome to our {course} program!"
             body = (

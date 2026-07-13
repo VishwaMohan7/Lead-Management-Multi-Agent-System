@@ -2,7 +2,7 @@ from typing import Any
 from mcp_clients.firestore_client import FirestoreMCPClient
 from mcp_clients.calendar_client import CalendarMCPClient
 from skills.recommendation_logic import RecommendationSkill
-from mcp_clients.base_client import logger
+from mcp_clients.base_client import log_step
 
 class RecommendationAgent:
     """
@@ -18,9 +18,10 @@ class RecommendationAgent:
         self.rec_skill = RecommendationSkill(llm, calendar_client)
 
     def execute(self, lead_id: str) -> dict:
-        logger.info(f"[RecommendationAgent] Executing for lead: {lead_id}")
+        log_step("RecommendationAgent", f"ENTER execute for lead {lead_id}")
 
         # 1. Fetch current lead state
+        log_step("RecommendationAgent", "Retrieving lead state from Firestore...")
         lead = self.firestore_client.get_lead(lead_id)
         if not lead:
             raise ValueError(f"Lead with id {lead_id} not found.")
@@ -33,6 +34,7 @@ class RecommendationAgent:
         lead_email = lead.get("lead_email", "learner@example.com")
 
         # 3. Run Recommendation skill
+        log_step("RecommendationAgent", "Executing Recommendation Skill (with Calendar scheduling checks)...")
         rec_res = self.rec_skill.execute(
             lead_id=lead_id,
             lead_email=lead_email,
@@ -40,8 +42,10 @@ class RecommendationAgent:
             score_points=score_points,
             extracted_data=extracted_data
         )
+        log_step("RecommendationAgent", f"Recommendation Skill completed. Action={rec_res.action}, Calendar scheduled={rec_res.calendar_event is not None}")
 
         # 4. Save recommendation info to Firestore MCP
+        log_step("RecommendationAgent", "Saving recommendation details back to Firestore...")
         updates = {
             "recommendation": {
                 "action": rec_res.action,
@@ -55,5 +59,5 @@ class RecommendationAgent:
             updates, 
             "recommendation_agent_completed"
         )
-        logger.info(f"[RecommendationAgent] Completed recommendation for lead {lead_id}: {rec_res.action}")
+        log_step("RecommendationAgent", f"EXIT execute successfully for lead {lead_id}")
         return updated_lead

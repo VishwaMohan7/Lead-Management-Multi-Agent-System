@@ -1,15 +1,16 @@
 # LeadFlow AI: Lead Management Multi-Agent System
 
-An AI-powered lead management system built for education and course businesses. The application takes incoming course inquiries (via web forms, simulated WhatsApp, or Gmail), runs them through a sequential pipeline of specialized reasoning agents (Analysis, Scoring, Recommendation, and Communication), drafts outbound messaging, and drops them into a human-approval dashboard queue before dispatching.
+An AI-powered lead management system built for education and course businesses. The application takes incoming course inquiries from WhatsApp, Gmail, or a form, processes them through a Google ADK multi-agent workflow powered by one shared LLM, stores the result in Firestore, classifies the lead as HOT/WARM/COLD, explains the reason, recommends the next step, and drafts the follow-up email and WhatsApp reply for human approval.
 
 ---
 
 ## Architecture Overview
 
-The project adheres to a strict three-layer separation:
-1. **Agents**: Orchestrated sequentially by the pipeline router. Each agent owns a specific domain of reasoning (e.g., scoring lead value). All agents communicate with the database via the shared Firestore MCP client.
-2. **Skills**: Reusable, stateless functions imported by agents (e.g. Lead Extraction, Email Drafting).
-3. **MCP Clients**: The sole interface between agents/skills and external platforms (Firestore, Google Calendar, Gmail, WhatsApp). 
+The project now uses an ADK-first design:
+1. **One ADK SequentialAgent workflow** coordinates specialized sub-agents for source intake, analysis, scoring, recommendation, and communication drafting.
+2. **One shared LLM** powers every ADK sub-agent through the same model setting.
+3. **Firestore** is the primary storage layer, with a local JSON fallback for offline development and tests.
+4. **FastAPI** keeps the dashboard endpoints stable while the ADK workflow updates each lead record.
 
 ```
    Raw Lead (Form/WhatsApp/Email)
@@ -18,16 +19,19 @@ The project adheres to a strict three-layer separation:
         [ FastAPI Backend ] ◄──────────► [ React Dashboard ]
                 │
                 ▼
-      [ Orchestrator Pipeline ]
+     [ Google ADK Sequential Workflow ]
                 │
-  ┌─────────────┼──────────────┬──────────────┐
-  ▼             ▼              ▼              ▼
-[Analysis]  [Scoring]   [Recommendation] [Communication]
-  │             │              │              │
-  └─────────────┼──────────────┴──────────────┤
-                ▼                             ▼
-       [ Firestore MCP ]               [ Other MCPs ]
-      (data/leads_db.json)         (Gmail, WhatsApp, Calendar)
+  ┌─────────────┼──────────────┬──────────────┬──────────────┐
+  ▼             ▼              ▼              ▼              ▼
+[Source]   [Analysis]      [Scoring]   [Recommendation] [Drafting]
+  │             │              │              │              │
+  └─────────────┴──────────────┴──────────────┴──────────────┘
+                        │
+                        ▼
+                 [ Firestore ]
+                        │
+                        ├──────────► [ Gmail ]
+                        └──────────► [ WhatsApp ]
 ```
 
 ---
@@ -35,10 +39,10 @@ The project adheres to a strict three-layer separation:
 ## Directory Structure
 
 ```text
-├── agents/             # Stateful reasoning agents (Analysis, Scoring, etc.)
-├── skills/             # Stateless business skills (Extraction, Drafting, etc.)
-├── mcp_clients/        # Simulation clients for Firestore, Gmail, WhatsApp, Calendar
-├── orchestrator/       # Thin router sequentially invoking agents and persisting state
+├── agents/             # ADK workflow and specialized sub-agent definitions
+├── skills/             # Reusable business logic helpers
+├── mcp_clients/        # Firestore/Gmail/WhatsApp/Calendar client wrappers
+├── orchestrator/       # Legacy sequential pipeline kept for compatibility/tests
 ├── api/                # FastAPI backend endpoints serving lead intake and dashboard UI
 ├── frontend/           # Vite + React dark-themed glassmorphism dashboard portal
 ├── tests/              # Pytest unit and integration test scripts
@@ -68,11 +72,13 @@ The project adheres to a strict three-layer separation:
    ```powershell
    pip install -r requirements.txt
    ```
-4. Create a `.env` file in the root directory and configure your Nvidia Nemotron API key (retrieved from [build.nvidia.com](https://build.nvidia.com)):
+4. Create a `.env` file in the root directory and configure your model and Firestore credentials:
    ```env
    NVIDIA_API_KEY="your-nvapi-key-here"
    NVIDIA_MODEL="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
    NVIDIA_BASE_URL="https://integrate.api.nvidia.com/v1"
+   FIRESTORE_PROJECT_ID="your-gcp-project-id"
+   GOOGLE_APPLICATION_CREDENTIALS="C:\\path\\to\\service-account.json"
    ```
 
 ### 2. Frontend Setup
@@ -95,7 +101,7 @@ From the root workspace directory, run:
 .venv\Scripts\uvicorn api.main:app --reload
 ```
 - API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Leads DB File (Simulated Firestore): `data/leads_db.json`
+- Firestore storage: real Firestore when credentials are present, otherwise `data/leads_db.json`
 
 ### 2. Launch React Frontend
 Open a new terminal shell, navigate to `frontend/`, and run:

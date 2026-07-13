@@ -9,6 +9,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
+  // Pipeline config and toast status
+  const [systemConfig, setSystemConfig] = useState({ mode: 'Mock Mode', model: 'mock-adk-model', is_mock: true });
+  const [showToast, setShowToast] = useState(false);
+  
   // Intake Form
   const [showIntakeModal, setShowIntakeModal] = useState(false);
   const [newLeadText, setNewLeadText] = useState('');
@@ -36,10 +40,6 @@ function App() {
       if (res.ok) {
         const data = await res.json();
         setLeads(data);
-        // Auto select first lead if none selected
-        if (data.length > 0 && !selectedLeadId) {
-          setSelectedLeadId(data[0].id);
-        }
       }
     } catch (err) {
       console.error("Error fetching leads:", err);
@@ -47,6 +47,13 @@ function App() {
       setRefreshing(false);
     }
   };
+
+  // Auto select first lead if none selected
+  useEffect(() => {
+    if (leads.length > 0 && !selectedLeadId) {
+      setSelectedLeadId(leads[0].id);
+    }
+  }, [leads, selectedLeadId]);
 
   // Fetch selected lead details
   const fetchLeadDetails = async (id) => {
@@ -70,12 +77,35 @@ function App() {
     }
   };
 
-  // Poll leads every 5 seconds
+  // Fetch system configuration
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config`);
+      if (res.ok) {
+        const data = await res.json();
+        setSystemConfig(data);
+        setShowToast(true);
+      }
+    } catch (err) {
+      console.error("Error fetching config:", err);
+    }
+  };
+
+  // Poll leads and fetch configuration on mount
   useEffect(() => {
     fetchLeads();
+    fetchConfig();
     const interval = setInterval(() => fetchLeads(), 5000);
     return () => clearInterval(interval);
   }, []);
+
+  // Toast self-dismiss timer
+  useEffect(() => {
+    if (showToast) {
+      const timer = setTimeout(() => setShowToast(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [showToast]);
 
   // Fetch lead details when selection changes
   useEffect(() => {
@@ -250,6 +280,67 @@ function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <style>{`
+        @keyframes slideDown {
+          from { transform: translate(-50%, -20px); opacity: 0; }
+          to { transform: translate(-50%, 0); opacity: 1; }
+        }
+      `}</style>
+
+      {/* Mode Status Toast Alert */}
+      {showToast && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          background: systemConfig.is_mock ? 'rgba(30, 41, 59, 0.95)' : 'rgba(6, 78, 59, 0.95)',
+          color: '#fff',
+          border: `1px solid ${systemConfig.is_mock ? 'rgba(148, 163, 184, 0.3)' : 'rgba(52, 211, 153, 0.4)'}`,
+          boxShadow: `0 10px 25px ${systemConfig.is_mock ? 'rgba(0,0,0,0.5)' : 'rgba(16,185,129,0.3)'}`,
+          padding: '12px 24px',
+          borderRadius: '12px',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          animation: 'slideDown 0.3s ease-out'
+        }}>
+          <div style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: systemConfig.is_mock ? '#94a3b8' : '#34d399',
+            boxShadow: `0 0 8px ${systemConfig.is_mock ? '#94a3b8' : '#34d399'}`
+          }} />
+          <span style={{ fontSize: '13px', fontWeight: 600 }}>
+            Active Pipeline Mode: <span style={{ color: systemConfig.is_mock ? '#38bdf8' : '#34d399' }}>{systemConfig.mode}</span>
+          </span>
+          <span style={{ fontSize: '11px', opacity: 0.7, marginLeft: '4px' }}>
+            ({systemConfig.model})
+          </span>
+          <button 
+            onClick={() => setShowToast(false)} 
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#fff',
+              cursor: 'pointer',
+              padding: 0,
+              marginLeft: '12px',
+              fontSize: '16px',
+              lineHeight: 1,
+              opacity: 0.7
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = 1}
+            onMouseLeave={e => e.currentTarget.style.opacity = 0.7}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <header style={{
         padding: '16px 32px',
@@ -280,7 +371,22 @@ function App() {
             <h1 style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px' }}>
               LeadFlow <span style={{ color: 'var(--primary)' }}>AI</span>
             </h1>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Education Multi-Agent Portal</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>Education Multi-Agent Portal</p>
+              <span style={{
+                fontSize: '9px',
+                padding: '2px 6px',
+                borderRadius: '8px',
+                background: systemConfig.is_mock ? 'rgba(148, 163, 184, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                color: systemConfig.is_mock ? '#94a3b8' : '#34d399',
+                border: `1px solid ${systemConfig.is_mock ? 'rgba(148, 163, 184, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                {systemConfig.mode}
+              </span>
+            </div>
           </div>
         </div>
 

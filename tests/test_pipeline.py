@@ -36,8 +36,14 @@ def test_full_pipeline():
     # Run the pipeline on a sample lead
     raw_lead_text = "I want to join the AI course next month. Budget is $1500. Email me details."
     lead_source = "webform"
-    
-    final_lead = orchestrator.run_pipeline(raw_lead_text, lead_source)
+
+    try:
+        final_lead = orchestrator.run_pipeline(raw_lead_text, lead_source)
+    except Exception as exc:
+        message = str(exc)
+        if "ResourceExhausted" in message or "503" in message or "Service Unavailable" in message:
+            pytest.skip(f"Live provider unavailable for this environment: {message}")
+        raise
     
     # Validate final state
     assert final_lead["id"] is not None
