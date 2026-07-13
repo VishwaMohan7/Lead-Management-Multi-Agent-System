@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 try:
     from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
     from langchain_openai import ChatOpenAI
+    from langchain_google_vertexai import ChatVertexAI
 except ImportError:
     class BaseMessage: pass
     class AIMessage:
@@ -16,6 +17,8 @@ except ImportError:
     class HumanMessage: pass
     class SystemMessage: pass
     class ChatOpenAI: pass
+    class ChatVertexAI: pass
+
 
 # Environment configuration
 from dotenv import load_dotenv
@@ -134,9 +137,18 @@ class MockLLM:
             scoring_output = {
                 "category": category,
                 "score": min(score_points, 100),
-                "reason": f"Lead shows high interest in target courses with specified details. Base score calculation: {score_points}."
+                "reasoning": f"Lead shows high interest in target courses with specified details. Base score calculation: {score_points}."
             }
             response_content = json.dumps(scoring_output)
+
+        # Check if the prompt is for recommendation
+        elif "recommendation" in prompt_text_lower or "admissions next best action" in prompt_text_lower:
+            rec_output = {
+                "action": "Call today" if "hot" in prompt_text_lower else "Assign senior counsellor" if "warm" in prompt_text_lower else "Send info email",
+                "details": "Follow up with the lead immediately to secure enrollment."
+            }
+            response_content = json.dumps(rec_output)
+
 
         # Check if the prompt is for Outbound Communication drafting
         elif "draft" in prompt_text_lower or "email" in prompt_text_lower or "whatsapp" in prompt_text_lower:
@@ -187,7 +199,15 @@ def get_llm(temperature: float = 0.0) -> Any:
     if cache_key in _LLM_CACHE:
         return _LLM_CACHE[cache_key]
 
-    if api_key:
+    if api_key in ("vertexai", "gemini"):
+        project_id = os.getenv("FIRESTORE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT") or "intern-bnmit-july-2026"
+        llm = ChatVertexAI(
+            model_name="gemini-2.5-flash",
+            project=project_id,
+            location="us-central1",
+            temperature=temperature
+        )
+    elif api_key:
         llm = ChatOpenAI(
             model=model_name,
             api_key=api_key,
@@ -201,3 +221,4 @@ def get_llm(temperature: float = 0.0) -> Any:
 
     _LLM_CACHE[cache_key] = llm
     return llm
+

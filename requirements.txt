@@ -9,4 +9,6 @@ google-adk>=2.4.0
 httpx>=0.25.0
 mcp>=1.28.1
 firebase-admin>=6.5.0
+google-cloud-aiplatform>=1.38.0
+
 

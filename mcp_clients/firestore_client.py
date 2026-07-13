@@ -36,7 +36,7 @@ class FirestoreMCPClient(BaseMCPClient):
             self._ensure_mock_db()
 
     def _should_use_firestore(self, mock_mode: Optional[bool]) -> bool:
-        if mock_mode is True:
+        if mock_mode is True or os.getenv("USE_LOCAL_DATABASE") == "true":
             return False
         if firestore is None or firebase_admin is None:
             raise RuntimeError("firebase-admin is required for Firestore storage.")
