@@ -10,8 +10,9 @@ from mcp_clients.calendar_client import CalendarMCPClient
 mcp = FastMCP("LeadManagementMCPServer")
 
 # Initialize the mock clients
+use_mock_gmail = os.getenv("USE_MOCK_GMAIL", "true").lower() == "true"
 firestore_client = FirestoreMCPClient()
-gmail_client = GmailMCPClient(mock_mode=True)
+gmail_client = GmailMCPClient(mock_mode=use_mock_gmail)
 whatsapp_client = WhatsAppMCPClient(mock_mode=True)
 calendar_client = CalendarMCPClient(mock_mode=True)
 

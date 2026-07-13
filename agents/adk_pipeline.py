@@ -28,7 +28,8 @@ def _firestore_client() -> FirestoreMCPClient:
 
 
 def _gmail_client() -> GmailMCPClient:
-    return GmailMCPClient(mock_mode=True)
+    use_mock_gmail = os.getenv("USE_MOCK_GMAIL", "true").lower() == "true"
+    return GmailMCPClient(mock_mode=use_mock_gmail)
 
 
 def get_lead(lead_id: str) -> dict:
