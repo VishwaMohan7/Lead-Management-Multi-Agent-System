@@ -48,6 +48,26 @@ function App() {
     }
   };
 
+  // Sync Gmail Inbox and then fetch leads
+  const handleSyncQueue = async () => {
+    setRefreshing(true);
+    try {
+      const syncRes = await fetch(`${API_BASE_URL}/api/leads/sync-gmail`, {
+        method: 'POST'
+      });
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData.synced > 0) {
+          alert(`Successfully synced ${syncData.synced} new unread emails from your Gmail inbox!`);
+        }
+      }
+    } catch (err) {
+      console.error("Error syncing Gmail:", err);
+    }
+    await fetchLeads(false);
+    setRefreshing(false);
+  };
+
   // Auto select first lead if none selected
   useEffect(() => {
     if (leads.length > 0 && !selectedLeadId) {
@@ -392,7 +412,7 @@ function App() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button 
-            onClick={() => fetchLeads(true)}
+            onClick={handleSyncQueue}
             disabled={refreshing}
             className="glass-panel"
             style={{

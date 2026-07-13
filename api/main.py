@@ -119,6 +119,46 @@ def create_lead(request: CreateLeadRequest, background_tasks: BackgroundTasks):
         "lead_id": lead["id"]
     }
 
+@app.post("/api/leads/sync-gmail")
+def sync_gmail_inbox(background_tasks: BackgroundTasks):
+    """
+    Checks Gmail inbox for new unread emails, creates leads, and triggers pipeline.
+    """
+    try:
+        new_emails = gmail_client.get_unread_emails()
+        import email.utils
+        synced_count = 0
+        for email_info in new_emails:
+            existing = firestore_client.get_all_leads()
+            subject = email_info.get("subject", "")
+            raw_text = email_info.get("body", "")
+            
+            duplicate = False
+            for l in existing:
+                if l.get("source") == "email" and (l.get("email_subject") == subject or l.get("raw_text") == raw_text):
+                    duplicate = True
+                    break
+            if duplicate:
+                continue
+
+            lead = firestore_client.create_lead(raw_text, "email")
+            _, sender_email = email.utils.parseaddr(email_info.get("sender", ""))
+            firestore_client.update_lead(
+                lead["id"],
+                {
+                    "lead_email": sender_email or email_info.get("sender"),
+                    "email_subject": subject
+                },
+                "gmail_sync_ingest"
+            )
+            background_tasks.add_task(run_adk_pipeline_task, lead["id"])
+            synced_count += 1
+        return {"message": f"Successfully synced {synced_count} new leads from Gmail.", "synced": synced_count}
+    except Exception as e:
+        logging.getLogger("api").error("Failed to sync Gmail inbox: %s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to sync Gmail inbox: {str(e)}")
+
+
 @app.get("/api/leads", response_model=List[Dict])
 def get_leads():
     """

@@ -169,3 +169,94 @@ class GmailMCPClient(BaseMCPClient):
             logger.error(f"Failed to send email to {recipient} via SMTP: {e}")
             return False
 
+    def get_unread_emails(self) -> list[dict]:
+        """
+        Fetches unread emails from the inbox.
+        In mock mode, returns a simulated unread enquiry.
+        """
+        self.log_call("get_unread_emails", {})
+        if self.mock_mode:
+            return [
+                {
+                    "id": "mock-unread-101",
+                    "sender": "new.student@gmail.com",
+                    "subject": "Inquiry about Python Course",
+                    "body": "Hi, I am looking to enroll in the python course ASAP. Please share details. Thanks!"
+                }
+            ]
+
+        gmail_user = os.getenv("GMAIL_USER")
+        gmail_password = os.getenv("GMAIL_APP_PASSWORD")
+        if not gmail_user or not gmail_password:
+            raise ValueError("GMAIL_USER and GMAIL_APP_PASSWORD must be configured in .env for real Gmail mode.")
+
+        try:
+            mail = imaplib.IMAP4_SSL("imap.gmail.com")
+            mail.login(gmail_user, gmail_password)
+            mail.select("inbox")
+
+            status, messages = mail.search(None, "UNSEEN")
+            if status != "OK":
+                return []
+
+            mail_ids = messages[0].split()
+            emails = []
+
+            for m_id in mail_ids[-5:]: # Limit to last 5 unread to prevent timeouts
+                status, data = mail.fetch(m_id, "(RFC822)")
+                if status != "OK":
+                    continue
+
+                for response_part in data:
+                    if isinstance(response_part, tuple):
+                        msg = email.message_from_bytes(response_part[1])
+                        
+                        subject = msg.get("Subject", "")
+                        if subject:
+                            decoded = decode_header(subject)[0]
+                            if isinstance(decoded[0], bytes):
+                                subject = decoded[0].decode(decoded[1] or "utf-8", errors="ignore")
+                            else:
+                                subject = decoded[0]
+
+                        sender = msg.get("From", "")
+                        if sender:
+                            decoded = decode_header(sender)[0]
+                            if isinstance(decoded[0], bytes):
+                                sender = decoded[0].decode(decoded[1] or "utf-8", errors="ignore")
+                            else:
+                                sender = decoded[0]
+
+                        body = ""
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                content_type = part.get_content_type()
+                                content_disposition = str(part.get("Content-Disposition"))
+                                if content_type == "text/plain" and "attachment" not in content_disposition:
+                                    payload = part.get_payload(decode=True)
+                                    if payload:
+                                        body = payload.decode(errors="ignore")
+                                    break
+                        else:
+                            payload = msg.get_payload(decode=True)
+                            if payload:
+                                body = payload.decode(errors="ignore")
+
+                        emails.append({
+                            "id": str(m_id.decode() if isinstance(m_id, bytes) else m_id),
+                            "sender": sender,
+                            "subject": subject,
+                            "body": body.strip()
+                        })
+                        
+                        # Mark as read
+                        mail.store(m_id, "+FLAGS", "\\Seen")
+
+            mail.close()
+            mail.logout()
+            return emails
+        except Exception as e:
+            logger.error(f"Failed to fetch unread emails from Gmail IMAP: {e}")
+            return []
+
+
