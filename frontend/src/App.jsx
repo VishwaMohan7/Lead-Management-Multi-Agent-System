@@ -1082,7 +1082,7 @@ function App() {
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                   {newLeadSource === 'email' ? 'Email Message Identifier' : 'Raw Lead Content'}
                 </label>
-                {newLeadSource === 'email' ? (
+                {newLeadSource === 'email' && systemConfig.is_mock ? (
                   <select
                     value={newLeadText}
                     onChange={(e) => setNewLeadText(e.target.value)}
@@ -1105,7 +1105,7 @@ function App() {
                 ) : (
                   <textarea
                     rows="4"
-                    placeholder="Enter details, e.g.: I want to enroll in the AI course tomorrow. Budget is $1000. Send information."
+                    placeholder={newLeadSource === 'email' ? "Enter search keyword, sender email, or Subject line of the email in your Gmail inbox..." : "Enter details, e.g.: I want to enroll in the AI course tomorrow. Budget is $1000. Send information."}
                     value={newLeadText}
                     onChange={(e) => setNewLeadText(e.target.value)}
                     style={{

@@ -142,7 +142,8 @@ def complete_source_intake(lead_id: str) -> dict:
         return {"error": f"Lead {lead_id} not found"}
 
     email_data = None
-    if lead.get("source") == "email" and str(lead.get("raw_text", "")).startswith("msg-"):
+    use_mock = _gmail_client().mock_mode
+    if lead.get("source") == "email" and (not use_mock or str(lead.get("raw_text", "")).startswith("msg-")):
         email_data = _gmail_client().get_email_content(str(lead.get("raw_text")))
 
     source_text = str((email_data or {}).get("body") or lead.get("raw_text", ""))
@@ -153,7 +154,9 @@ def complete_source_intake(lead_id: str) -> dict:
         }
     }
     if email_data:
-        updates["lead_email"] = email_data.get("sender", lead.get("lead_email", "learner@example.com"))
+        import email.utils
+        _, sender_email = email.utils.parseaddr(email_data.get("sender", ""))
+        updates["lead_email"] = sender_email or email_data.get("sender", lead.get("lead_email", "learner@example.com"))
         updates["email_subject"] = email_data.get("subject", lead.get("email_subject"))
     return update_lead(lead_id, updates, "source_intake_completed")
 
