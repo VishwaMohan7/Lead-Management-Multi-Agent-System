@@ -47,12 +47,12 @@ class FirestoreMCPClient(BaseMCPClient):
                 project_id = os.getenv("FIRESTORE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
                 if project_id:
                     options["projectId"] = project_id
-                credential_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+                credential_path = os.getenv("FIRESTORE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
                 if credential_path:
                     credential_path = os.path.expanduser(credential_path.strip().strip('"'))
                     if not os.path.exists(credential_path):
                         raise FileNotFoundError(
-                            f"GOOGLE_APPLICATION_CREDENTIALS does not exist: {credential_path}"
+                            f"Firestore credentials file does not exist: {credential_path}"
                         )
                     firebase_admin.initialize_app(
                         credentials.Certificate(credential_path),
@@ -65,7 +65,7 @@ class FirestoreMCPClient(BaseMCPClient):
             return True
         except Exception as exc:  # pragma: no cover - depends on runtime credentials
             self._firestore_db = None
-            if os.getenv("FIRESTORE_PROJECT_ID") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            if os.getenv("FIRESTORE_PROJECT_ID") or os.getenv("FIRESTORE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
                 raise RuntimeError(f"Firestore storage is configured but unavailable: {exc}") from exc
             logger.warning(f"Falling back to JSON lead storage because Firestore is unavailable: {exc}")
             return False
