@@ -2,6 +2,8 @@ import os
 import smtplib
 import imaplib
 import email
+import email.utils
+from datetime import datetime, timezone, timedelta
 from email.header import decode_header
 from email.mime.text import MIMEText
 from typing import Optional
@@ -175,15 +177,49 @@ class GmailMCPClient(BaseMCPClient):
         In mock mode, returns a simulated unread enquiry.
         """
         self.log_call("get_unread_emails", {})
+        
+        # Determine threshold datetime: default 2026-07-13T13:33:44+05:30
+        env_threshold = os.getenv("GMAIL_MIN_TIMESTAMP")
+        if env_threshold:
+            try:
+                threshold = datetime.fromisoformat(env_threshold)
+            except Exception:
+                threshold = datetime(2026, 7, 13, 13, 33, 44, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+        else:
+            threshold = datetime(2026, 7, 13, 13, 33, 44, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+
         if self.mock_mode:
-            return [
+            mock_emails = [
                 {
                     "id": "mock-unread-101",
                     "sender": "new.student@gmail.com",
                     "subject": "Inquiry about Python Course",
-                    "body": "Hi, I am looking to enroll in the python course ASAP. Please share details. Thanks!"
+                    "body": "Hi, I am looking to enroll in the python course ASAP. Please share details. Thanks!",
+                    "date": "Mon, 13 Jul 2026 14:00:00 +0530"
+                },
+                {
+                    "id": "mock-unread-102",
+                    "sender": "old.student@gmail.com",
+                    "subject": "Inquiry about Java Course",
+                    "body": "Hi, is the Java course available?",
+                    "date": "Mon, 13 Jul 2026 12:00:00 +0530"
                 }
             ]
+            filtered_mock = []
+            for mock_email in mock_emails:
+                email_date = None
+                date_str = mock_email.get("date")
+                if date_str:
+                    try:
+                        email_date = email.utils.parsedate_to_datetime(date_str)
+                    except Exception:
+                        pass
+                if email_date:
+                    if email_date.tzinfo is None:
+                        email_date = email_date.replace(tzinfo=timezone.utc)
+                    if email_date >= threshold:
+                        filtered_mock.append(mock_email)
+            return filtered_mock
 
         gmail_user = os.getenv("GMAIL_USER")
         gmail_password = os.getenv("GMAIL_APP_PASSWORD")
@@ -195,14 +231,16 @@ class GmailMCPClient(BaseMCPClient):
             mail.login(gmail_user, gmail_password)
             mail.select("inbox")
 
-            status, messages = mail.search(None, "UNSEEN")
+            today_str = datetime.now().strftime("%d-%b-%Y")
+            search_query = f'UNSEEN SINCE {today_str}'
+            status, messages = mail.search(None, search_query)
             if status != "OK":
                 return []
 
             mail_ids = messages[0].split()
             emails = []
 
-            for m_id in mail_ids[-5:]: # Limit to last 5 unread to prevent timeouts
+            for m_id in mail_ids[-2:]: # Limit to last 5 unread to prevent timeouts
                 status, data = mail.fetch(m_id, "(RFC822)")
                 if status != "OK":
                     continue
@@ -211,6 +249,22 @@ class GmailMCPClient(BaseMCPClient):
                     if isinstance(response_part, tuple):
                         msg = email.message_from_bytes(response_part[1])
                         
+                        # Parse and check email date threshold
+                        date_header = msg.get("Date", "")
+                        email_date = None
+                        if date_header:
+                            try:
+                                email_date = email.utils.parsedate_to_datetime(date_header)
+                            except Exception:
+                                pass
+                        
+                        if email_date:
+                            if email_date.tzinfo is None:
+                                email_date = email_date.replace(tzinfo=timezone.utc)
+                            if email_date < threshold:
+                                logger.info(f"Skipping email {m_id} because its date {email_date} is before threshold {threshold}")
+                                continue
+
                         subject = msg.get("Subject", "")
                         if subject:
                             decoded = decode_header(subject)[0]
